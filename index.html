@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Smoke Free Ledger</title>
+<meta name="description" content="Track money saved, cigarettes avoided, and recovery milestones since quitting." />
+
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0F1C18" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Smoke Free" />
+
+<style>
+  html, body { margin: 0; padding: 0; background: #0F1C18; }
+  #root { min-height: 100vh; }
+  #boot {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    color: #9FB0AA; font-family: -apple-system, sans-serif; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div id="root"><div id="boot">loading…</div></div>
+
+<!-- React + ReactDOM (UMD builds, no bundler needed) -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- In-browser JSX transform -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+
+/* Lightweight inline icon set (no external icon library needed) */
+const { useState, useEffect, useRef, useMemo } = React;
+
+function Icon({ size = 18, color = "currentColor", strokeWidth = 2, style, children, viewBox = "0 0 24 24" }) {
+  return (
+    <svg width={size} height={size} viewBox={viewBox} fill="none" stroke={color}
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {children}
+    </svg>
+  );
+}
+function Wind(props) {
+  return <Icon {...props}>
+    <path d="M3 8h11.5a2.5 2.5 0 1 0-2.3-3.5" />
+    <path d="M3 13h15.5a2.5 2.5 0 1 1-2.3 3.5" />
+    <path d="M3 18h8.5a2 2 0 1 0-1.8-2.8" />
+  </Icon>;
+}
+function Plus(props) {
+  return <Icon {...props}><path d="M12 5v14M5 12h14" /></Icon>;
+}
+function Check(props) {
+  return <Icon {...props}><path d="M20 6 9 17l-5-5" /></Icon>;
+}
+function Coins(props) {
+  return <Icon {...props}>
+    <circle cx="9" cy="9" r="6" />
+    <path d="M14.5 8.5a6 6 0 1 1 0 8" />
+  </Icon>;
+}
+function HeartPulse(props) {
+  return <Icon {...props}>
+    <path d="M20 8.5c0 4.5-8 10-8 10s-8-5.5-8-10a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 8.5Z" />
+    <path d="M5 11h2.5l1.5-3 2 5 1.5-2.5H17" />
+  </Icon>;
+}
+function RotateCcw(props) {
+  return <Icon {...props}>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <path d="M3 3v5h5" />
+  </Icon>;
+}
+
+
+/* ---------------------------------------------------------
+   Milestones — based on the well-established smoking
+   cessation recovery timeline. Times are in minutes elapsed.
+--------------------------------------------------------- */
+const MILESTONES = [
+  { m: 20, cat: "body", label: "Pulse rate returns to normal" },
+  { m: 8 * 60, cat: "body", label: "Blood oxygen recovers; nicotine and carbon monoxide levels halve" },
+  { m: 24 * 60, cat: "body", label: "Carbon monoxide fully flushed out; lungs begin clearing mucus" },
+  { m: 48 * 60, cat: "body", label: "No nicotine left in your body; taste and smell start sharpening" },
+  { m: 72 * 60, cat: "body", label: "Breathing eases as airways relax; energy starts climbing" },
+  { m: 3 * 24 * 60, cat: "mind", label: "Cravings peak in intensity, but each one usually passes within minutes" },
+  { m: 7 * 24 * 60, cat: "mind", label: "Old triggers — coffee, driving, stress — start losing their automatic pull" },
+  { m: 14 * 24 * 60, cat: "body", label: "Circulation improves noticeably throughout your body" },
+  { m: 14 * 24 * 60, cat: "mind", label: "New routines begin replacing the old smoking cues" },
+  { m: 30 * 24 * 60, cat: "body", label: "Lung function begins measurable improvement" },
+  { m: 30 * 24 * 60, cat: "mind", label: "Urges become noticeably less frequent" },
+  { m: 90 * 24 * 60, cat: "body", label: "Coughing and shortness of breath drop off" },
+  { m: 90 * 24 * 60, cat: "mind", label: "Smoking triggers lose most of their emotional charge" },
+  { m: 180 * 24 * 60, cat: "mind", label: "The automatic reach for a cigarette fades in most situations" },
+  { m: 270 * 24 * 60, cat: "body", label: "Lungs' cilia regrow — infection risk falls" },
+  { m: 365 * 24 * 60, cat: "body", label: "Heart attack risk falls to about half that of a smoker" },
+  { m: 365 * 24 * 60, cat: "mind", label: "Smoking no longer feels like part of your identity" },
+  { m: 5 * 365 * 24 * 60, cat: "body", label: "Stroke risk nears that of someone who never smoked" },
+  { m: 10 * 365 * 24 * 60, cat: "body", label: "Lung cancer death risk falls to about half that of a smoker" },
+  { m: 15 * 365 * 24 * 60, cat: "body", label: "Heart attack risk matches a lifelong non-smoker" },
+].sort((a, b) => a.m - b.m);
+
+function getMilestones(nrtActive) {
+  return MILESTONES.map((m) => {
+    if (!nrtActive) return m;
+    if (m.m === 8 * 60 && m.cat === "body") {
+      return { ...m, label: "Blood oxygen recovers; carbon monoxide from cigarettes halves" };
+    }
+    if (m.m === 48 * 60 && m.cat === "body") {
+      return {
+        ...m,
+        label: "Taste and smell start sharpening (nicotine continues via your replacement)",
+      };
+    }
+    return m;
+  });
+}
+
+const NRT_TYPES = [
+  { id: "vape", label: "Vape", unit: "mg/ml" },
+  { id: "pouch", label: "Nicotine pouch", unit: "mg" },
+  { id: "patch", label: "Patch", unit: "mg" },
+];
+
+const CCY = "£";
+
+/* ---------------------------------------------------------
+   Small helpers
+--------------------------------------------------------- */
+function fmt(n, digits = 0) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function durationParts(totalMinutes) {
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = Math.floor(totalMinutes % 60);
+  const seconds = Math.floor((totalMinutes % 1) * 60);
+  return { days, hours, minutes, seconds };
+}
+
+/* ---------------------------------------------------------
+   Main component
+--------------------------------------------------------- */
+function SmokeFreeTracker() {
+  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState(null);
+  const [nrtLog, setNrtLog] = useState([]);
+  const [now, setNow] = useState(Date.now());
+  const [storageError, setStorageError] = useState(false);
+
+  // onboarding form state
+  const [form, setForm] = useState({
+    quitAt: "2026-07-02T16:04",
+    cigsPerDay: 15,
+    cigsPerPack: 20,
+    pricePerPack: 13.5,
+  });
+
+  const tickRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await window.storage.get("config", false);
+        if (cfg && cfg.value) {
+          const parsed = JSON.parse(cfg.value);
+          setConfig({
+            quitAt: parsed.quitAt ?? "2026-07-02T16:04",
+            cigsPerDay: parsed.cigsPerDay ?? 15,
+            cigsPerPack: parsed.cigsPerPack ?? 20,
+            pricePerPack: parsed.pricePerPack ?? 13.5,
+            nrtEnabled: parsed.nrtEnabled ?? false,
+            nrtType: parsed.nrtType ?? "pouch",
+            nrtStrength: parsed.nrtStrength ?? 13,
+            nrtCostPerUnit: parsed.nrtCostPerUnit ?? "",
+            strengthHistory: parsed.strengthHistory ?? [],
+          });
+        }
+      } catch {
+        // no config saved yet — show onboarding
+      }
+      try {
+        const log = await window.storage.get("nrt-log", false);
+        if (log && log.value) {
+          const parsedLog = JSON.parse(log.value);
+          setNrtLog(Array.isArray(parsedLog) ? parsedLog : []);
+        }
+      } catch {
+        // no log yet
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    tickRef.current = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tickRef.current);
+  }, []);
+
+  const elapsedMinutes = useMemo(() => {
+    if (!config) return 0;
+    const start = new Date(config.quitAt).getTime();
+    return Math.max(0, (now - start) / 60000);
+  }, [config, now]);
+
+  const cigsAvoided = config ? (elapsedMinutes / (24 * 60)) * config.cigsPerDay : 0;
+  const moneySaved = config ? (cigsAvoided / config.cigsPerPack) * config.pricePerPack : 0;
+  const minutesRegained = cigsAvoided * 11; // ~11 minutes of life per cigarette, widely cited estimate
+  const lifeParts = durationParts(minutesRegained);
+  const timeParts = durationParts(elapsedMinutes);
+
+  const quitPhase = useMemo(() => {
+    if (elapsedMinutes < 7 * 1440) return "Breaking the smoking cycle";
+    if (elapsedMinutes < 60 * 1440) return "Building smoke-free routines";
+    if (elapsedMinutes < 365 * 1440) return "Becoming a non-smoker";
+    return "Life beyond cigarettes";
+  }, [elapsedMinutes]);
+
+  const nrtSpend = useMemo(() => {
+    if (!config?.nrtCostPerUnit) return 0;
+    return nrtLog.length * Number(config.nrtCostPerUnit || 0);
+  }, [nrtLog, config]);
+
+  const netSaved = moneySaved - nrtSpend;
+
+  async function saveConfig(next) {
+    setConfig(next);
+    try {
+      await window.storage.set("config", JSON.stringify(next), false);
+    } catch {
+      setStorageError(true);
+    }
+  }
+
+  async function logNrtUse() {
+    if (!config?.nrtType) return;
+    const entry = { ts: Date.now(), type: config.nrtType, strength: Number(config.nrtStrength || 0) };
+    const next = [...nrtLog, entry];
+    setNrtLog(next);
+    try {
+      await window.storage.set("nrt-log", JSON.stringify(next), false);
+    } catch {
+      setStorageError(true);
+    }
+  }
+
+  async function updateStrength(rawVal) {
+    const val = Number(rawVal);
+    if (Number.isNaN(val)) return;
+    if (val === config.nrtStrength) return;
+    const history = [...(config.strengthHistory || []), { ts: Date.now(), strength: val }];
+    await saveConfig({ ...config, nrtStrength: val, strengthHistory: history });
+  }
+
+  async function resetAll() {
+    setConfig(null);
+    setNrtLog([]);
+    try {
+      await window.storage.delete("config", false);
+    } catch {}
+    try {
+      await window.storage.delete("nrt-log", false);
+    } catch {}
+  }
+
+  const totalNicotineMg = nrtLog.reduce((s, e) => s + (e.strength || 0), 0);
+  const nrtToday = nrtLog.filter((e) => Date.now() - e.ts < 24 * 60 * 60 * 1000).length;
+  const lastNrtUse = nrtLog.length ? nrtLog[nrtLog.length - 1].ts : null;
+  const nrtActive = Boolean(config?.nrtEnabled && lastNrtUse && Date.now() - lastNrtUse < 48 * 60 * 60 * 1000);
+
+  const daysSinceStart = Math.max(1, elapsedMinutes / 1440);
+  const avgUsesPerDay = nrtLog.length / daysSinceStart;
+  const taperSteps = config
+    ? [
+        { done: true, text: "Stop smoking completely" },
+        { done: nrtLog.length > 0, text: "Stabilise on nicotine replacement" },
+        { done: (config.strengthHistory?.length || 1) > 1, text: "Reduce pouch/patch/vape strength" },
+        { done: nrtLog.length > 3 && nrtToday < avgUsesPerDay * 0.8, text: "Reduce daily nicotine uses" },
+        { done: !config.nrtEnabled, text: "Become nicotine‑free" },
+      ]
+    : [];
+
+  const smokeClarity = Math.min(1, elapsedMinutes / (30 * 24 * 60)); // fully clear by day 30
+
+  if (loading) {
+    return (
+      <div style={{ ...S.page, alignItems: "center", justifyContent: "center" }}>
+        <style>{CSS}</style>
+        <div style={{ color: T.mist, fontFamily: T.body }}>loading…</div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div style={S.page}>
+        <style>{CSS}</style>
+        <div style={S.onboardCard}>
+          <div style={S.onboardEyebrow}>SMOKE‑FREE LEDGER</div>
+          <h1 style={S.onboardTitle}>Set your quit point</h1>
+          <p style={S.onboardSub}>
+            One entry, and the ledger starts running — savings, cigarettes avoided, and
+            what your body's already repairing.
+          </p>
+
+          <label style={S.label}>Quit date &amp; time</label>
+          <input
+            type="datetime-local"
+            value={form.quitAt}
+            onChange={(e) => setForm({ ...form, quitAt: e.target.value })}
+            style={S.input}
+          />
+
+          <div style={S.row3}>
+            <div>
+              <label style={S.label}>Cigarettes / day</label>
+              <input
+                type="number"
+                min="1"
+                value={form.cigsPerDay}
+                onChange={(e) => setForm({ ...form, cigsPerDay: Number(e.target.value) })}
+                style={S.input}
+              />
+            </div>
+            <div>
+              <label style={S.label}>Cigarettes / pack</label>
+              <input
+                type="number"
+                min="1"
+                value={form.cigsPerPack}
+                onChange={(e) => setForm({ ...form, cigsPerPack: Number(e.target.value) })}
+                style={S.input}
+              />
+            </div>
+            <div>
+              <label style={S.label}>Price / pack ({CCY})</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.pricePerPack}
+                onChange={(e) => setForm({ ...form, pricePerPack: Number(e.target.value) })}
+                style={S.input}
+              />
+            </div>
+          </div>
+
+          <button
+            style={S.primaryBtn}
+            onClick={() =>
+              saveConfig({
+                ...form,
+                nrtEnabled: true,
+                nrtType: "pouch",
+                nrtStrength: 13,
+                nrtCostPerUnit: "",
+                strengthHistory: [{ ts: Date.now(), strength: 13 }],
+              })
+            }
+          >
+            Start the ledger
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+
+      {/* HERO — clearing smoke */}
+      <div style={S.hero}>
+        <SmokeField clarity={smokeClarity} />
+        <div style={S.heroScrim} />
+        <div style={S.heroInner}>
+          <div style={S.eyebrow}>
+            <Wind size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+            SMOKE‑FREE FOR
+          </div>
+          <div style={S.odometer}>
+            <OdoBlock value={timeParts.days} label={timeParts.days === 1 ? "day" : "days"} />
+            <Colon />
+            <OdoBlock value={pad(timeParts.hours)} label="hrs" />
+            <Colon />
+            <OdoBlock value={pad(timeParts.minutes)} label="min" />
+            <Colon />
+            <OdoBlock value={pad(timeParts.seconds)} label="sec" />
+          </div>
+          <div style={S.heroPhase}>{quitPhase}</div>
+          <div style={S.heroSub}>since {new Date(config.quitAt).toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* NRT MODULE */}
+      <section style={S.nrtCard}>
+        <div style={S.nrtHead}>
+          <div>
+            <div style={S.sectionEyebrow}>OPTIONAL MODULE</div>
+            <h2 style={S.sectionTitle}>Nicotine replacement</h2>
+          </div>
+          <Switch
+            on={config.nrtEnabled}
+            onToggle={() => saveConfig({ ...config, nrtEnabled: !config.nrtEnabled })}
+          />
+        </div>
+
+        {config.nrtEnabled && (
+          <div style={S.nrtBody}>
+            <div style={S.row3}>
+              <div>
+                <label style={S.label}>Type</label>
+                <select
+                  value={config.nrtType}
+                  onChange={(e) => saveConfig({ ...config, nrtType: e.target.value })}
+                  style={S.input}
+                >
+                  {NRT_TYPES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>
+                  Current strength ({NRT_TYPES.find((t) => t.id === config.nrtType)?.unit})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  defaultValue={config.nrtStrength}
+                  key={config.nrtStrength}
+                  onBlur={(e) => updateStrength(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.target.blur();
+                  }}
+                  style={S.input}
+                />
+              </div>
+              <div>
+                <label style={S.label}>Cost / use ({CCY}, optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={config.nrtCostPerUnit}
+                  onChange={(e) => saveConfig({ ...config, nrtCostPerUnit: e.target.value })}
+                  style={S.input}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div style={S.btnRow}>
+              <button style={S.logBtn} onClick={logNrtUse}>
+                <Plus size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
+                Log one use
+              </button>
+            </div>
+
+            {config.strengthHistory?.length > 1 && (
+              <div style={S.strengthTrail}>
+                {config.strengthHistory.map((h, i) => (
+                  <div key={i} style={S.trailChip}>
+                    <span style={S.trailMg}>{h.strength}mg</span>
+                    <span style={S.trailDate}>
+                      {new Date(h.ts).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                    </span>
+                    {i < config.strengthHistory.length - 1 && <span style={S.trailArrow}>→</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={S.nrtStats}>
+              <NrtStat label="Today" value={nrtToday} />
+              <NrtStat label="All‑time uses" value={nrtLog.length} />
+              <NrtStat label="Nicotine logged" value={`${fmt(totalNicotineMg, 0)} mg`} />
+              {config.nrtCostPerUnit ? (
+                <NrtStat label="NRT spend" value={`${CCY}${fmt(nrtSpend, 2)}`} />
+              ) : null}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* TAPER ROADMAP */}
+      {config.nrtEnabled && (
+        <section style={S.roadmapCard}>
+          <div style={S.sectionEyebrow}>THE BIGGER PICTURE</div>
+          <h2 style={S.sectionTitle}>Nicotine taper roadmap</h2>
+          <div style={S.roadmapList}>
+            {taperSteps.map((step, i) => (
+              <div key={i} style={S.roadmapRow}>
+                <div style={{ ...S.roadmapDot, ...(step.done ? S.roadmapDotDone : {}) }}>
+                  {step.done && <Check size={11} strokeWidth={3} color={T.ink} />}
+                </div>
+                <span style={{ opacity: step.done ? 1 : 0.6 }}>{step.text}</span>
+              </div>
+            ))}
+          </div>
+          <p style={S.roadmapNote}>
+            A rough guide inferred from your logs, not a fixed plan — reduce strength and
+            frequency at whatever pace works for you.
+          </p>
+        </section>
+      )}
+
+      {/* STAT GRID */}
+      <div style={S.grid}>
+        <StatCard
+          icon={<Coins size={18} />}
+          label={config.nrtEnabled && config.nrtCostPerUnit ? "Net saved" : "Money saved"}
+          value={`${CCY}${fmt(config.nrtEnabled && config.nrtCostPerUnit ? netSaved : moneySaved, 2)}`}
+          accent={T.gold}
+        />
+        <StatCard
+          icon={<Cigarette />}
+          label="Cigarettes not smoked"
+          value={fmt(cigsAvoided, 1)}
+          accent={T.mint}
+        />
+        <StatCard
+          icon={<HeartPulse size={18} />}
+          label="Life regained"
+          value={`${lifeParts.days}d ${lifeParts.hours}h`}
+          sub="~11 min per cigarette avoided"
+          accent={T.coral}
+        />
+      </div>
+
+      {/* MILESTONES */}
+      <section style={S.section}>
+        <div style={S.sectionHead}>
+          <div style={S.sectionEyebrow}>RECOVERY TIMELINE</div>
+          <h2 style={S.sectionTitle}>What your body and mind are doing about it</h2>
+        </div>
+        <div style={S.timeline}>
+          {getMilestones(nrtActive).map((mstone, i) => {
+            const reached = elapsedMinutes >= mstone.m;
+            const isMind = mstone.cat === "mind";
+            return (
+              <div key={i} style={S.tRow}>
+                <div style={{ ...S.tDot, ...(reached ? (isMind ? S.tDotDoneMind : S.tDotDone) : {}) }}>
+                  {reached && <Check size={12} strokeWidth={3} color={T.ink} />}
+                </div>
+                <div style={S.tBody}>
+                  <div style={S.tMeta}>
+                    <span style={{ ...S.tWhen, color: reached ? (isMind ? T.gold : T.mint) : T.mist }}>
+                      {humanizeMinutes(mstone.m)}
+                    </span>
+                    <span style={{ ...S.tTag, color: isMind ? T.gold : T.mint }}>
+                      {isMind ? "MIND" : "BODY"}
+                    </span>
+                  </div>
+                  <div style={{ ...S.tLabel, opacity: reached ? 1 : 0.55 }}>{mstone.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <button style={S.resetBtn} onClick={resetAll}>
+        <RotateCcw size={13} style={{ marginRight: 6, verticalAlign: -2 }} />
+        Reset ledger
+      </button>
+
+      {storageError && (
+        <div style={S.errorToast}>Couldn't save — your changes may not persist.</div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   Sub-components
+--------------------------------------------------------- */
+function OdoBlock({ value, label }) {
+  return (
+    <div style={S.odoBlock}>
+      <div style={S.odoValue}>{value}</div>
+      <div style={S.odoLabel}>{label}</div>
+    </div>
+  );
+}
+
+function Colon() {
+  return <div style={S.odoColon}>:</div>;
+}
+
+function StatCard({ icon, label, value, sub, accent }) {
+  return (
+    <div style={S.statCard}>
+      <div style={{ ...S.statIcon, color: accent }}>{icon}</div>
+      <div style={S.statValue}>{value}</div>
+      <div style={S.statLabel}>{label}</div>
+      {sub && <div style={S.statSub}>{sub}</div>}
+    </div>
+  );
+}
+
+function NrtStat({ label, value }) {
+  return (
+    <div style={S.nrtStat}>
+      <div style={S.nrtStatValue}>{value}</div>
+      <div style={S.nrtStatLabel}>{label}</div>
+    </div>
+  );
+}
+
+function Switch({ on, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{ ...S.switchTrack, background: on ? T.mint : "rgba(255,255,255,0.12)" }}
+      aria-pressed={on}
+    >
+      <div style={{ ...S.switchThumb, transform: on ? "translateX(20px)" : "translateX(0px)" }} />
+    </button>
+  );
+}
+
+function SmokeField({ clarity }) {
+  // clarity 0 -> full smoke, 1 -> clear sky
+  const puffOpacity = 0.55 * (1 - clarity) + 0.05;
+  return (
+    <div style={S.smokeWrap}>
+      <div style={{ ...S.sky, opacity: 0.3 + 0.7 * clarity }} />
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={`puff puff-${i}`}
+          style={{ opacity: puffOpacity }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Cigarette() {
+  // small custom glyph (lucide has no cigarette icon in this version)
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="10" width="15" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="2" y="10" width="4" height="5" rx="1" fill="currentColor" />
+      <path d="M19 10.5c1 -1 1 -2.5 0 -3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M21.5 11c1.4 -1.4 1.4 -3.6 0 -5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.6" />
+    </svg>
+  );
+}
+
+/* ---------------------------------------------------------
+   Utils
+--------------------------------------------------------- */
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+
+function humanizeMinutes(m) {
+  if (m < 60) return `${m} min`;
+  if (m < 60 * 24) return `${Math.round(m / 60)} hrs`;
+  const days = m / (60 * 24);
+  if (days < 30) return `${Math.round(days)} days`;
+  if (days < 365) return `${Math.round(days / 30)} months`;
+  const years = days / 365;
+  return `${years % 1 === 0 ? years : years.toFixed(0)} years`;
+}
+
+/* ---------------------------------------------------------
+   Design tokens
+--------------------------------------------------------- */
+const T = {
+  ink: "#0F1C18",
+  paper: "#F4F1E9",
+  mist: "#9FB0AA",
+  mint: "#7FD8BE",
+  gold: "#E8B563",
+  coral: "#FF7A59",
+  display: "'Newsreader', serif",
+  mono: "'IBM Plex Mono', monospace",
+  body: "'Inter', sans-serif",
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,500&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');
+
+.puff {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(220,220,220,0.9) 0%, rgba(180,180,180,0.3) 60%, transparent 75%);
+  filter: blur(32px);
+  transition: opacity 1.2s ease;
+}
+.puff-0 { width: 220px; height: 140px; top: -30px; left: 8%; animation: drift1 14s ease-in-out infinite; }
+.puff-1 { width: 180px; height: 120px; top: 10px; left: 45%; animation: drift2 18s ease-in-out infinite; }
+.puff-2 { width: 260px; height: 160px; top: -20px; left: 68%; animation: drift1 22s ease-in-out infinite reverse; }
+.puff-3 { width: 150px; height: 100px; top: 30px; left: 25%; animation: drift2 16s ease-in-out infinite reverse; }
+
+@keyframes drift1 {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(18px) translateY(-10px); }
+}
+@keyframes drift2 {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-24px) translateY(8px); }
+}
+
+input:focus, select:focus, button:focus-visible {
+  outline: 2px solid #7FD8BE;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .puff { animation: none !important; }
+}
+
+@media (max-width: 640px) {
+  .odo-hide-sm { display: none; }
+}
+`;
+
+/* ---------------------------------------------------------
+   Style objects
+--------------------------------------------------------- */
+const S = {
+  page: {
+    minHeight: "100vh",
+    background: T.ink,
+    color: T.paper,
+    fontFamily: T.body,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "0 0 48px",
+  },
+
+  onboardCard: {
+    maxWidth: 480,
+    width: "90%",
+    marginTop: 64,
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 16,
+    padding: "36px 32px",
+  },
+  onboardEyebrow: {
+    fontFamily: T.mono,
+    fontSize: 11,
+    letterSpacing: "0.18em",
+    color: T.mint,
+    marginBottom: 14,
+  },
+  onboardTitle: {
+    fontFamily: T.display,
+    fontSize: 32,
+    fontWeight: 500,
+    margin: "0 0 10px",
+  },
+  onboardSub: {
+    color: T.mist,
+    fontSize: 14.5,
+    lineHeight: 1.6,
+    margin: "0 0 28px",
+  },
+  label: {
+    display: "block",
+    fontSize: 12,
+    color: T.mist,
+    marginBottom: 6,
+    fontFamily: T.mono,
+    letterSpacing: "0.03em",
+  },
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    color: T.paper,
+    fontFamily: T.body,
+    fontSize: 14,
+    marginBottom: 18,
+  },
+  row3: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 12,
+  },
+  primaryBtn: {
+    width: "100%",
+    background: T.mint,
+    color: T.ink,
+    border: "none",
+    borderRadius: 8,
+    padding: "13px 0",
+    fontFamily: T.body,
+    fontWeight: 600,
+    fontSize: 14.5,
+    cursor: "pointer",
+    marginTop: 4,
+  },
+
+  hero: {
+    position: "sticky",
+    top: 0,
+    zIndex: 30,
+    width: "100%",
+    maxWidth: 720,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginTop: 28,
+    minHeight: 200,
+    display: "flex",
+    alignItems: "flex-end",
+    boxShadow: "0 12px 30px -12px rgba(0,0,0,0.6)",
+  },
+  heroInner: {
+    position: "relative",
+    zIndex: 2,
+    padding: "0 28px 28px",
+    width: "100%",
+  },
+  eyebrow: {
+    fontFamily: T.mono,
+    fontSize: 11,
+    letterSpacing: "0.2em",
+    color: T.paper,
+    opacity: 0.85,
+    marginBottom: 10,
+  },
+  odometer: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  odoBlock: { display: "flex", flexDirection: "column", alignItems: "flex-start" },
+  odoValue: {
+    fontFamily: T.mono,
+    fontWeight: 600,
+    fontSize: "clamp(34px, 8vw, 52px)",
+    lineHeight: 1,
+    fontVariantNumeric: "tabular-nums",
+  },
+  odoLabel: {
+    fontFamily: T.mono,
+    fontSize: 11,
+    color: "rgba(244,241,233,0.65)",
+    marginTop: 4,
+  },
+  odoColon: {
+    fontFamily: T.mono,
+    fontSize: "clamp(28px, 6vw, 40px)",
+    opacity: 0.4,
+    paddingBottom: 14,
+  },
+  heroPhase: {
+    marginTop: 14,
+    fontFamily: T.body,
+    fontSize: 14.5,
+    fontWeight: 600,
+    color: T.mint,
+  },
+  heroSub: {
+    marginTop: 14,
+    fontSize: 12.5,
+    color: "rgba(244,241,233,0.6)",
+    fontFamily: T.body,
+  },
+
+  smokeWrap: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 0,
+  },
+  heroScrim: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 1,
+    backdropFilter: "blur(14px)",
+    WebkitBackdropFilter: "blur(14px)",
+    background: "rgba(10, 22, 19, 0.38)",
+  },
+  sky: {
+    position: "absolute",
+    inset: 0,
+    background: `linear-gradient(160deg, #16302B 0%, #123B34 45%, #0E2A28 100%)`,
+  },
+
+  grid: {
+    width: "100%",
+    maxWidth: 720,
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 12,
+    marginTop: 20,
+  },
+  statCard: {
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    padding: "18px 16px",
+  },
+  statIcon: { marginBottom: 10 },
+  statValue: {
+    fontFamily: T.mono,
+    fontSize: 22,
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+  },
+  statLabel: { fontSize: 12.5, color: T.mist, marginTop: 4 },
+  statSub: { fontSize: 10.5, color: "rgba(159,176,170,0.6)", marginTop: 6 },
+
+  section: {
+    width: "100%",
+    maxWidth: 720,
+    marginTop: 40,
+  },
+  sectionHead: { marginBottom: 18 },
+  sectionEyebrow: {
+    fontFamily: T.mono,
+    fontSize: 11,
+    letterSpacing: "0.18em",
+    color: T.gold,
+    marginBottom: 6,
+  },
+  sectionTitle: {
+    fontFamily: T.display,
+    fontSize: 22,
+    fontWeight: 500,
+    margin: 0,
+  },
+
+  timeline: { display: "flex", flexDirection: "column", gap: 0 },
+  tRow: { display: "flex", gap: 14, paddingBottom: 20, position: "relative" },
+  tDot: {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: "1.5px solid rgba(255,255,255,0.2)",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  tDotDone: { background: T.mint, border: "1.5px solid " + T.mint },
+  tDotDoneMind: { background: T.gold, border: "1.5px solid " + T.gold },
+  tBody: { flex: 1, borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 18 },
+  tMeta: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
+  tWhen: { fontFamily: T.mono, fontSize: 12, fontWeight: 600 },
+  tTag: {
+    fontFamily: T.mono,
+    fontSize: 9.5,
+    letterSpacing: "0.12em",
+    opacity: 0.7,
+    border: "1px solid currentColor",
+    borderRadius: 4,
+    padding: "1px 5px",
+  },
+  tLabel: { fontSize: 14, lineHeight: 1.5 },
+
+  nrtCard: {
+    width: "100%",
+    maxWidth: 720,
+    marginTop: 40,
+    background: "rgba(255,122,89,0.05)",
+    border: "1px solid rgba(255,122,89,0.18)",
+    borderRadius: 16,
+    padding: "22px 24px 26px",
+  },
+  nrtHead: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  nrtBody: { marginTop: 22 },
+  logBtn: {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.15)",
+    color: T.paper,
+    borderRadius: 8,
+    padding: "10px 16px",
+    fontFamily: T.body,
+    fontSize: 13.5,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  btnRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 18,
+  },
+  strengthDisplay: {
+    fontFamily: T.mono,
+    fontSize: 20,
+    fontWeight: 600,
+    padding: "10px 0 18px",
+  },
+  stepDownBtn: {
+    background: "transparent",
+    border: "1px solid rgba(255,122,89,0.4)",
+    color: T.coral,
+    borderRadius: 8,
+    padding: "10px 16px",
+    fontFamily: T.body,
+    fontSize: 13.5,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  strengthForm: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  strengthInput: {
+    width: 90,
+    boxSizing: "border-box",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid " + T.coral,
+    borderRadius: 8,
+    padding: "10px 10px",
+    color: T.paper,
+    fontFamily: T.mono,
+    fontSize: 14,
+  },
+  strengthSave: {
+    background: T.mint,
+    color: T.ink,
+    border: "none",
+    borderRadius: 8,
+    width: 36,
+    height: 38,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  strengthCancel: {
+    background: "transparent",
+    color: T.mist,
+    border: "1px solid rgba(255,255,255,0.15)",
+    borderRadius: 8,
+    width: 36,
+    height: 38,
+    cursor: "pointer",
+    fontSize: 13,
+  },
+  strengthTrail: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 18,
+  },
+  trailChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontFamily: T.mono,
+    fontSize: 12,
+  },
+  trailMg: { color: T.paper, fontWeight: 600 },
+  trailDate: { color: T.mist, fontSize: 10.5 },
+  trailArrow: { color: "rgba(255,255,255,0.3)", marginLeft: 2 },
+  nrtStats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+    gap: 12,
+  },
+  nrtStat: {
+    background: "rgba(255,255,255,0.03)",
+    borderRadius: 10,
+    padding: "12px 14px",
+  },
+  nrtStatValue: {
+    fontFamily: T.mono,
+    fontSize: 17,
+    fontWeight: 600,
+  },
+  nrtStatLabel: { fontSize: 11, color: T.mist, marginTop: 3 },
+
+  roadmapCard: {
+    width: "100%",
+    maxWidth: 720,
+    marginTop: 20,
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 16,
+    padding: "22px 24px 24px",
+  },
+  roadmapList: { marginTop: 16, display: "flex", flexDirection: "column", gap: 12 },
+  roadmapRow: { display: "flex", alignItems: "center", gap: 12, fontSize: 14 },
+  roadmapDot: {
+    width: 20,
+    height: 20,
+    borderRadius: "50%",
+    border: "1.5px solid rgba(255,255,255,0.2)",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  roadmapDotDone: { background: T.mint, border: "1.5px solid " + T.mint },
+  roadmapNote: {
+    marginTop: 18,
+    fontSize: 12,
+    color: T.mist,
+    lineHeight: 1.5,
+  },
+
+  switchTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    border: "none",
+    position: "relative",
+    cursor: "pointer",
+    flexShrink: 0,
+    transition: "background 0.2s ease",
+  },
+  switchThumb: {
+    position: "absolute",
+    top: 2,
+    left: 2,
+    width: 20,
+    height: 20,
+    borderRadius: "50%",
+    background: "#fff",
+    transition: "transform 0.2s ease",
+  },
+
+  resetBtn: {
+    marginTop: 36,
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.12)",
+    color: T.mist,
+    borderRadius: 8,
+    padding: "9px 16px",
+    fontSize: 12.5,
+    fontFamily: T.body,
+    cursor: "pointer",
+  },
+
+  errorToast: {
+    marginTop: 16,
+    fontSize: 12,
+    color: T.coral,
+  },
+};
+
+
+/* -----------------------------------------------------------
+   Persistent storage shim: same interface as Claude's
+   window.storage, backed by real browser localStorage so it
+   works as a standalone hosted app / installed PWA.
+----------------------------------------------------------- */
+window.storage = {
+  async get(key) {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return null;
+    return { key, value: raw, shared: false };
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+    return { key, value, shared: false };
+  },
+  async delete(key) {
+    localStorage.removeItem(key);
+    return { key, deleted: true, shared: false };
+  },
+  async list(prefix) {
+    const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
+    return { keys, prefix, shared: false };
+  },
+};
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<SmokeFreeTracker />);
+
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    });
+  }
+</script>
+
+</body>
+</html>
